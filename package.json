@@ -1,0 +1,40 @@
+{
+  "name": "atelier-admin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Portail d'administration partagé multi-clients — Atelier",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "next": "^15.3.4",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "drizzle-orm": "^0.45.3",
+    "postgres": "^3.4.5",
+    "better-auth": "^1.7.7",
+    "zod": "^4.6.5",
+    "lucide-react": "^0.441.0",
+    "clsx": "^2.1.1"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "drizzle-kit": "^0.31.4",
+    "tailwindcss": "^3.4.1",
+    "postcss": "^8",
+    "autoprefixer": "^10",
+    "eslint": "^9",
+    "eslint-config-next": "^15.3.4"
+  }
+}

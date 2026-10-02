@@ -1,0 +1,36 @@
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=Cormorant+Garamond:wght@600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Les couleurs ne sont PAS définies ici : elles viennent du thème du tenant,
+   injecté dans la balise <head> sous forme de variables. Un seul jeu de
+   composants, autant d'identités visuelles. */
+
+body {
+  background-color: var(--bg, #fff);
+  color: var(--body, #333);
+  font-family: var(--font-body, Inter, sans-serif);
+}
+
+@layer components {
+  .card   { background: var(--surface,#fff); border: 1px solid var(--border,#e5e5e5);
+            border-radius: var(--radius-card,20px); }
+  .pill   { border-radius: var(--radius-control,9999px); }
+  .label  { font-family: var(--font-label,Inter,sans-serif); font-size: 10px; font-weight: 700;
+            text-transform: uppercase; letter-spacing: .08em; }
+  .btn-primary { background: var(--ink,#111); color: #fff; border-radius: var(--radius-control,9999px);
+                 padding: .625rem 1.25rem; font-size: .875rem; font-weight: 600;
+                 transition: background-color .2s ease; }
+  .btn-primary:hover { opacity: .88; }
+  .btn-ghost { border: 1.5px solid var(--ink,#111); color: var(--ink,#111); border-radius: var(--radius-control,9999px);
+               padding: .625rem 1.25rem; font-size: .875rem; font-weight: 600;
+               transition: background-color .2s ease, color .2s ease; }
+  .btn-ghost:hover { background: var(--ink,#111); color: #fff; }
+  .nav-item { display:flex; align-items:center; gap:.75rem; padding:.625rem 1rem;
+              border-radius:.75rem; font-size:.875rem; font-weight:500;
+              color: var(--body,#333); transition: background-color .2s ease; }
+  .nav-item:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+  .nav-item-active { background: var(--ink,#111); color:#fff; }
+}
