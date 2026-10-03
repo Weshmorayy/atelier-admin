@@ -15,7 +15,10 @@
 import { betterAuth } from 'better-auth'
 import { organization, admin as adminPlugin } from 'better-auth/plugins'
 import { nextCookies } from 'better-auth/next-js'
+import { drizzleAdapter } from 'better-auth/adapters/drizzle'
+import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
+import { authSchema } from '@/db/auth-schema'
 
 /**
  * SECRET — pas d'échec à l'import.
@@ -53,8 +56,19 @@ const client = postgres(process.env.DATABASE_URL ?? 'postgres://localhost:5432/a
   prepare: false,
 })
 
+/**
+ * Adaptateur Drizzle plutôt qu'un client postgres brut.
+ *
+ * Avec le client brut, Better Auth journalait « Adapter does not correctly
+ * implement transaction function, patching it automatically » et corrigeait de
+ * lui-même : transactions non atomiques sur les écritures d'authentification.
+ * L'adaptateur Drizzle fournit une vraie implémentation, et permet de
+ * partager la même instance Postgres que le reste de l'application.
+ */
+const authDb = drizzle(client, { schema: authSchema })
+
 export const auth = betterAuth({
-  database: client,
+  database: drizzleAdapter(authDb, { provider: 'pg', schema: authSchema }),
   secret: resolveSecret(),
 
   baseURL: process.env.BETTER_AUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL,
