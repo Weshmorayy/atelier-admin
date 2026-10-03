@@ -71,6 +71,25 @@ psql "$DATABASE_URL" -f src/db/test_rls.sql
 
 > Rappel : RLS est **inopérante** si l'application se connecte en propriétaire
 > des tables. D'où `FORCE ROW LEVEL SECURITY` et le rôle `atelier_app`.
+>
+> **Exécuté le 3 octobre 2026 sur PostgreSQL 18.6** — 10 contrôles, tous verts.
+> Voir « Ce que le test a corrigé » ci-dessous : deux de nos hypothèses
+> étaient fausses.
+
+### Ce que le test a corrigé
+
+En l'écrivant, on croyait que toute violation de RLS lève une erreur. C'est faux,
+et l'écart est important :
+
+| Opération | Mécanisme RLS | Comportement réel |
+|---|---|---|
+| `INSERT` vers un autre tenant | `WITH CHECK` | Postgres **lève** une erreur |
+| `DELETE` par un rôle trop faible | `USING` | **Zéro ligne supprimée, en silence** |
+
+Un `DELETE` non autorisé ne lève donc rien. Un test qui attend une exception
+passe alors que la suppression a eu lieu. La propriété de sécurité à vérifier
+est que **la ligne survit**, pas l'absence d'erreur — c'est désormais ce que le
+test contrôle.
 
 ## Consommer le contenu depuis un site client
 

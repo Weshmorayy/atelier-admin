@@ -22,48 +22,70 @@ const SITE = resolve(HERE, '../../continental-website/src/data/products.ts')
 
 const src = readFileSync(SITE, 'utf8')
 
-const block = src.match(/export const products:\s*Product\[\]\s*=\s*\[([\s\S]*?)\n\]\s*$/m)
-if (!block) {
-  console.error('✗ Impossible de lire products.ts — la forme attendue a changé.')
-  process.exit(1)
+/**
+ * Extraction du tableau par COMPTAGE DE CROCHETS.
+ *
+ * Un regex non-greedy s'arrête au premier `]` en début de ligne — c'est-à-dire
+ * au premier tableau imbriqué, pas à la fin de `products`. C'est ce qui
+ * produisait des lignes corrompues. Le comptage suit réellement l'imbrication.
+ */
+function extractArray(source, marker) {
+  const startAt = source.indexOf(marker)
+  if (startAt === -1) throw new Error(`Marqueur introuvable : ${marker}`)
+
+  // On cherche le `[` APRÈS le `=` d'initialisation : sinon on tombe sur
+  // l'annotation de type `Product[]`, et le script lit « [] ».
+  const assignAt = source.indexOf('=', startAt)
+  if (assignAt === -1) throw new Error(`Affectation introuvable après ${marker}`)
+  const open = source.indexOf('[', assignAt)
+  let depth = 0
+  let quote = null
+
+  for (let i = open; i < source.length; i++) {
+    const ch = source[i]
+
+    if (quote) {
+      if (ch === '\\') { i++; continue }
+      if (ch === quote) quote = null
+      continue
+    }
+    if (ch === "'" || ch === '"' || ch === '`') { quote = ch; continue }
+    if (ch === '[') depth++
+    else if (ch === ']') {
+      depth--
+      if (depth === 0) return source.slice(open, i + 1)
+    }
+  }
+  throw new Error('Crochets non équilibrés')
+}
+
+const arrayText = extractArray(src, 'export const products')
+
+// Le fichier est du code local maîtrisé : on l'évalue plutôt que de réécrire
+// un analyseur de TypeScript. Les clés non-quotées du format objet sont
+// valides en JavaScript.
+const products = new Function(`return ${arrayText}`)()
+
+if (!Array.isArray(products) || products.length === 0) {
+  throw new Error('Aucun produit extrait.')
 }
 
 const q = (v) => (v === null || v === undefined ? 'NULL' : `'${String(v).replace(/'/g, "''")}'`)
-const arr = (v) => `ARRAY[${(v ?? []).map(q).join(', ')}]::text[]`
 const json = (v) => `${JSON.stringify(v ?? {}).replace(/'/g, "''")}`
 
-/** Découpe le tableau d'objets en enregistrements. */
-const records = block[1]
-  .split(/\n\s{4}\},\s*\n/)
-  .map((r) => r.trim())
-  .filter(Boolean)
-
-function field(record, name, fallback = null) {
-  const m = record.match(new RegExp(`\\b${name}:\\s*([^,\\n]+)`))
-  if (!m) return fallback
-  let v = m[1].trim().replace(/,$/, '')
-  if (v.startsWith("'") && v.endsWith("'")) v = v.slice(1, -1).replace(/\\'/g, "'")
-  if (v === 'true') return true
-  if (v === 'false') return false
-  if (/^-?[\d.]+$/.test(v)) return Number(v)
-  return v
-}
-
-const rows = records.map((r) => {
-  const slug = field(r, 'slug')
-  const name = field(r, 'name')
-  const price = field(r, 'price', 0)
-  const image = field(r, 'image')
-  const badge = field(r, 'badge')
-  const category = field(r, 'category', 'ventilateur-pied')
-  const inStock = field(r, 'inStock', true)
-  const ref = field(r, 'ref')
-
-  // Les specs du site deviennent le champ libre de l'admin.
-  const specs = { ref, ...(ref ? { 'Référence': ref } : {}) }
-
-  return `  ('continental', ${q(slug)}, ${q(name)}, ${price}, ${q(image)}, ${q(badge)},
-   ${q(category)}, ${inStock ? 'true' : 'false'}, ${q(json(specs))}::jsonb)`
+const rows = products.map((p, i) => {
+  const specs = { ...(p.ref ? { 'Référence': p.ref } : {}), ...(p.specs ?? {}) }
+  const cells = [
+    q(p.slug || 'produit-' + (i + 1)),
+    q(p.name),
+    String(Number(p.price) || 0),
+    q(p.image),
+    q(p.badge),
+    p.inStock === false ? 'false' : 'true',
+    q(json(specs)) + '::jsonb',
+    q(p.category || 'ventilateur-pied'),
+  ]
+  return '  (' + cells.join(', ') + ')'
 })
 
 const categories = [
@@ -81,6 +103,14 @@ const sql = `-- Généré par seed-continental.mjs — NE PAS ÉDITER À LA MAIN
 -- ${rows.length} produit(s)
 
 BEGIN;
+
+-- Les seeds s'exécutent comme propriétaire des tables. Or FORCE ROW LEVEL
+-- SECURITY soumet AUSSI le propriétaire aux politiques — c'est voulu, pour que
+-- le propriétaire ne puisse pas contourner l'isolation. Un seed a donc besoin
+-- d'une porte explicite, levée ici puis refermée dans le même transaction.
+ALTER TABLE tenants NO FORCE ROW LEVEL SECURITY;
+ALTER TABLE categories NO FORCE ROW LEVEL SECURITY;
+ALTER TABLE products NO FORCE ROW LEVEL SECURITY;
 
 -- Tenant
 INSERT INTO tenants (slug, name, status, locale, modules, theme)
@@ -115,14 +145,19 @@ ON CONFLICT (tenant_id, slug) DO UPDATE
 
 -- Produits
 INSERT INTO products
-  (tenant_id, slug, name, price, image, badge, category_label, in_stock,
-   is_active, specs, features, published_at)
-SELECT t.id, p.slug, p.name, p.price, p.image, p.badge, p.category_label,
-       p.in_stock, true, p.specs, ARRAY[]::text[], now()
+  (tenant_id, slug, name, price, image, badge, in_stock,
+   is_active, specs, features, category_id, published_at)
+SELECT t.id, p.slug, p.name, p.price, p.image, p.badge,
+       p.in_stock, true, p.specs, '[]'::jsonb,
+       -- La catégorie se résout ICI : dans un ON CONFLICT, seules EXCLUDED et
+       -- la table cible sont visibles, pas les alias du FROM.
+       (SELECT c.id FROM categories c
+         WHERE c.tenant_id = t.id AND c.slug = p.category_slug) AS category_id,
+       now()
   FROM tenants t
   CROSS JOIN (VALUES
      ${rows.join(',\n     ')}
-  ) AS p(slug, name, price, image, badge, category_label, in_stock, specs)
+  ) AS p(slug, name, price, image, badge, in_stock, specs, category_slug)
  WHERE t.slug = 'continental'
 ON CONFLICT (tenant_id, slug) DO UPDATE
   SET name    = EXCLUDED.name,
@@ -131,6 +166,12 @@ ON CONFLICT (tenant_id, slug) DO UPDATE
       badge   = EXCLUDED.badge,
       specs   = EXCLUDED.specs,
       updated_at = now();
+
+-- On referme immédiatement : dès la sortie de cette transaction, l'isolation
+-- est de nouveau garantie, même si le seed a échoué entre-temps.
+ALTER TABLE tenants FORCE ROW LEVEL SECURITY;
+ALTER TABLE categories FORCE ROW LEVEL SECURITY;
+ALTER TABLE products FORCE ROW LEVEL SECURITY;
 
 COMMIT;
 `
