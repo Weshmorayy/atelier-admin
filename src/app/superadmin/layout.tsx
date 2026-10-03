@@ -1,6 +1,5 @@
 import { redirect } from 'next/navigation'
-import { headers } from 'next/headers'
-import { resolveSession } from '@/core/session'
+import { requireSuperAdmin } from '@/core/session'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,21 +9,16 @@ export const dynamic = 'force-dynamic'
  * Garde au niveau du layout : aucune page enfant n'est atteignable sans
  * passer par ici. Le contrôle est refait dans chaque action mutante — un garde
  * de rendu ne protège pas d'un appel direct à une Server Action.
+ *
+ * La vérification ne résout aucun tenant : elle porte sur la session et sur
+ * l'indicateur superadmin, rien d'autre.
  */
 export default async function SuperAdminLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
-  const host = (await headers()).get('x-forwarded-host') ?? ''
-  const subdomain = host.split(':')[0]
-
-  const session = await resolveSession(subdomain)
-
-  // Pas de session → page de connexion. Pas de superadmin → 404.
-  // Le 404 est volontaire : ne pas révéler l'existence d'une zone d'administration.
-  if (!session) redirect('/connexion')
-  if (!session.isSuperAdmin) redirect('/')
+  await requireSuperAdmin()
 
   return (
     <div className="mx-auto max-w-[1400px] px-6 py-10">

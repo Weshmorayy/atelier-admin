@@ -1,45 +1,43 @@
 import { redirect } from 'next/navigation'
-import { headers } from 'next/headers'
+import Link from 'next/link'
 import { sql } from 'drizzle-orm'
-import { getDb } from '@/db'
-import { resolveSession } from '@/core/session'
+import { asSuperAdmin } from '@/db'
+import { requireSuperAdmin } from '@/core/session'
 import { MODULE_REGISTRY, resolveEnabled, type ModuleKey } from '@/core/modules'
 import { revalidatePath } from 'next/cache'
 
 export const dynamic = 'force-dynamic'
 
 /* ─────────────────────────────────────────────────── garde superadmin ── */
-
-async function requireSuperAdmin() {
-  const host = (await headers()).get('x-forwarded-host') ?? ''
-  const session = await resolveSession(host.split(':')[0])
-  if (!session) redirect('/connexion')
-  if (!session.isSuperAdmin) redirect('/')
-  return session
-}
+/* La garde vit dans core/session.ts (`requireSuperAdmin`) : elle ne résout
+   aucun tenant. Resoudre un sous-domaine ici rendait la console inatteignable
+   hors production, où l'hôte n'est jamais un slug client. */
 
 /* ─────────────────────────────────────────────────────────── lecture ── */
 
 /**
  * Liste des tenants.
  *
- * Un superadmin traverse les tenants : `withTenant` n'a pas de sens ici, il
- * n'y a pas de tenant courant. La lecture est directe et explicite — c'est le
- * seul endroit du code où l'isolation est court-circuitée, et c'est
- * intentionnel : c'est la vue transverse de l'agence.
+ * Un superadmin traverse les tenants : il n'y a pas de tenant courant. La
+ * lecture se fait dans `asSuperAdmin`, qui pose le GUC `app.user_role`
+ * attendu par `app_is_superadmin()`. Un `getDb()` nu ne suffit PAS : le RLS
+ * filtre alors la liste en silence et la console affiche « 0 site ».
  */
 export default async function SuperAdminPage() {
   await requireSuperAdmin()
 
-  const rows = (await getDb().execute(sql`
-    SELECT t.id::text, t.slug, t.name, t.status, t.modules, t.created_at,
-           (SELECT count(*) FROM products p WHERE p.tenant_id = t.id) AS product_count
-      FROM tenants t
-     ORDER BY t.name
-  `)) as unknown as {
-    id: string; slug: string; name: string; status: string
-    modules: unknown; created_at: Date; product_count: number
-  }[]
+  const rows = await asSuperAdmin(async (tx) => {
+    const r = await tx.execute(sql`
+      SELECT t.id::text, t.slug, t.name, t.status, t.modules, t.created_at,
+             (SELECT count(*) FROM products p WHERE p.tenant_id = t.id) AS product_count
+        FROM tenants t
+       ORDER BY t.name
+    `)
+    return r as unknown as {
+      id: string; slug: string; name: string; status: string
+      modules: unknown; created_at: Date; product_count: number
+    }[]
+  })
 
   return (
     <div>
@@ -60,13 +58,20 @@ export default async function SuperAdminPage() {
                     {t.slug} · {t.product_count} produit{t.product_count > 1 ? 's' : ''}
                   </p>
                 </div>
-                <span className="label rounded-full px-3 py-1"
-                  style={{
-                    border: '1px solid var(--border)',
-                    color: t.status === 'active' ? 'var(--accent-text)' : 'var(--muted)',
-                  }}>
-                  {t.status}
-                </span>
+                <div className="flex items-center gap-3">
+                  {/* Sans ce lien, la console est un cul-de-sac : on y
+                      active des modules sans jamais voir le site concerné. */}
+                  <Link href={`/admin/${t.slug}`} className="btn-ghost">
+                    Ouvrir le site
+                  </Link>
+                  <span className="label rounded-full px-3 py-1"
+                    style={{
+                      border: '1px solid var(--border)',
+                      color: t.status === 'active' ? 'var(--accent-text)' : 'var(--muted)',
+                    }}>
+                    {t.status}
+                  </span>
+                </div>
               </div>
 
               <form action={toggleModule} className="mt-5">
@@ -115,9 +120,12 @@ export default async function SuperAdminPage() {
 /**
  * Active/désactive un module pour un tenant.
  *
- * L'écriture passe par `withTenant` avec le rôle `superadmin` : le rôle est
- * un paramètre de ce serveur de confiance, jamais de l'entrée du client, et
- * les politiques RLS l'autorisent explicitement via `app_is_superadmin()`.
+ * Lecture ET écriture passent par `asSuperAdmin`. L'écriture surtout : un
+ * `UPDATE tenants` effectué sans le GUC `app.user_role` est écarté par la
+ * politique RLS sans lever d'erreur — le bouton semblait répondre
+ * « activé » alors que
+ * rien n'était enregistré. La ligne visée est relue après coup pour que
+ * l'écran reflète la base et non l'intention.
  */
 async function toggleModule(formData: FormData) {
   'use server'
@@ -130,22 +138,30 @@ async function toggleModule(formData: FormData) {
     throw new Error('Requête invalide')
   }
 
-  const db = getDb()
-  const current = (await db.execute(sql`
-    SELECT modules FROM tenants WHERE id = ${tenantId} LIMIT 1
-  `)) as unknown as { modules: ModuleKey[] }[]
+  await asSuperAdmin(async (tx) => {
+    const current = (await tx.execute(sql`
+      SELECT modules FROM tenants WHERE id = ${tenantId} LIMIT 1
+    `)) as unknown as { modules: ModuleKey[] }[]
 
-  const existing = resolveEnabled(current[0]?.modules)
-  const next = existing.includes(moduleKey)
-    ? existing.filter((k) => k !== moduleKey)
-    : resolveEnabled([...existing, moduleKey])
+    if (!current[0]) throw new Error('Site introuvable')
 
-  await db.execute(sql`
-    UPDATE tenants
-       SET modules = ${JSON.stringify(next)}::jsonb,
-           updated_at = now()
-     WHERE id = ${tenantId}
-  `)
+    const existing = resolveEnabled(current[0].modules)
+    const next = existing.includes(moduleKey)
+      ? existing.filter((k) => k !== moduleKey)
+      : resolveEnabled([...existing, moduleKey])
+
+    const written = await tx.execute(sql`
+      UPDATE tenants
+         SET modules = ${JSON.stringify(next)}::jsonb,
+             updated_at = now()
+       WHERE id = ${tenantId}
+      RETURNING id::text
+    `)
+
+    if ((written as unknown as unknown[]).length === 0) {
+      throw new Error("Le site n'a pas pu être modifié.")
+    }
+  })
 
   revalidatePath('/superadmin')
 }

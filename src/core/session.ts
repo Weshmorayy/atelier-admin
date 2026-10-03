@@ -107,15 +107,29 @@ export async function resolveSession(slug?: string): Promise<ResolvedSession | n
 }
 
 /**
+ * Traduit un rôle Better Auth vers l'échelle du RLS.
+ *
+ * `null` = refus. Un rôle inconnu ne doit JAMAIS être traité comme un rôle
+ * par défaut : cela accorderait des droits par défaut à un compte mal
+ * configuré.
+ */
+function toRole(raw: string | undefined | null): Role | null {
+  switch (raw) {
+    case 'owner':  return 'owner'
+    case 'admin':  return 'manager'
+    case 'editor': return 'editor'
+    case 'viewer': return 'viewer'
+    default:       return null
+  }
+}
+
+/**
  * Rôle d'un utilisateur sur un tenant, via la table `member`.
  *
- * Les rôles Better Auth ('owner' | 'admin' | 'editor' | 'viewer') sont
- * traduits vers l'échelle du RLS. Le mapping est explicite et NON rangé par
- * ordre alphabétique : 'admin' et 'owner' ont les mêmes pouvoirs en base,
- * mais seuls les deux derniers reaching le haut de l'échelle.
- *
- * Retourne `null` si l'utilisateur n'appartient pas à ce tenant — et `null`
- * doit être traité comme un refus, jamais comme un rôle par défaut.
+ * Les tables `member` et `organization` ne portent pas de RLS : ce sont des
+ * tables d'identité, pas du contenu client. La jointure sur le slug est
+ * exacte : un tenant existe si et seulement si une organisation porte le même
+ * slug.
  */
 async function getMemberRole(userId: string, tenantSlug: string): Promise<Role | null> {
   const rows = (await getDb().execute(sql`
@@ -127,15 +141,75 @@ async function getMemberRole(userId: string, tenantSlug: string): Promise<Role |
      LIMIT 1
   `)) as unknown as { role: string }[]
 
-  const raw = rows[0]?.role
-  if (!raw) return null
+  return toRole(rows[0]?.role)
+}
 
-  switch (raw) {
-    case 'owner':   return 'owner'
-    case 'admin':   return 'manager'
-    case 'editor':  return 'editor'
-    case 'viewer':  return 'viewer'
-    default:        return null   // rôle inconnu : refus, pas escalade
+/**
+ * Tous les sites auxquels un utilisateur appartient réellement.
+ *
+ * Sert à l'aiguillage après connexion : un utilisateur agency doit atterrir
+ * sur LE site qu'il administre, pas sur une page quiliste le système entier.
+ *
+ * `app_resolve_tenant` est croisé en LATERAL : il filtre les organisations
+ * orphelines (organisation sans tenant, ou tenant désactivé) au lieu de
+ * lister des sites inaccessible.
+ */
+export async function listUserTenants(userId: string): Promise<{
+  slug: string; name: string; role: Role; modules: ModuleKey[]
+}[]> {
+  const rows = (await getDb().execute(sql`
+    SELECT o.slug AS slug, t.name AS name, t.modules AS modules, m.role AS member_role
+      FROM member m
+      JOIN organization o ON o.id = m.organization_id
+      CROSS JOIN LATERAL app_resolve_tenant(o.slug) t
+     WHERE m.user_id = ${userId}
+     ORDER BY o.slug
+  `)) as unknown as {
+    slug: string; name: string; modules: unknown; member_role: string
+  }[]
+
+  return rows.flatMap((r) => {
+    const role = toRole(r.member_role)
+    if (!role) return []
+    return [{
+      slug: r.slug,
+      name: r.name,
+      role,
+      modules: resolveEnabled(r.modules),
+    }]
+  })
+}
+
+/**
+ * Garde superadmin — SANS tenant.
+ *
+ * `resolveSession` exige un slug et une appartenance : c'est le bon modèle pour
+ * administrer un site client, mais un superadmin n'appartient à aucun tenant
+ * par construction. Il résolvait donc le sous-domaine (`localhost` en local),
+ * obtenait un slug inexistant, et la console d'agence redirigeait vers la
+ * connexion — forever.
+ *
+ * Ici la seule question posée est « qui êtes-vous et êtes-vous de l'agence ? ».
+ * Le slug n'intervient pas, donc aucune résolution de tenant à échouer.
+ */
+export async function requireSuperAdmin(): Promise<{
+  user: { id: string; email: string; name: string | null }
+}> {
+  const session = await getSession()
+  if (!session?.user) redirect('/connexion')
+
+  const isSuperAdmin = Boolean(
+    (session.user as { isSuperAdmin?: boolean }).isSuperAdmin,
+  )
+  // Redirection et non 404 : on ne confirme pas l'existence de la console.
+  if (!isSuperAdmin) redirect('/')
+
+  return {
+    user: {
+      id: session.user.id,
+      email: session.user.email,
+      name: session.user.name ?? null,
+    },
   }
 }
 

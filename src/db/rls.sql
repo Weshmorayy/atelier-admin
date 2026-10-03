@@ -68,6 +68,23 @@ CREATE POLICY tenant_self ON tenants
   FOR SELECT TO atelier_app
   USING (app_is_superadmin() OR id = app_current_tenant());
 
+-- Modification de la fiche d'un site : réservée à l'agence.
+--
+-- Elle manquait, et l'absence est MUETTE : sans politique UPDATE, PostgreSQL
+-- refuse l'écriture, y compris pour un superadmin — l'instruction affecte
+-- zéro ligne sans lever d'erreur. Les bascules de modules de la console
+-- d'agence ne fonctionnaient donc pas du tout, et l'interface affirmait le
+-- contraire. C'est exactement le genre de trou que seule une exécution réelle
+-- révèle : le code, la politique et l'écran semblaient tous corrects.
+--
+-- `WITH CHECK` interdit en plus de faire glisser une ligne vers un tenant
+-- auquel on n'aurait pas accès.
+DROP POLICY IF EXISTS tenant_super_update ON tenants;
+CREATE POLICY tenant_super_update ON tenants
+  FOR UPDATE TO atelier_app
+  USING (app_is_superadmin())
+  WITH CHECK (app_is_superadmin());
+
 -- `tenant_domains`
 ALTER TABLE tenant_domains ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tenant_domains FORCE  ROW LEVEL SECURITY;

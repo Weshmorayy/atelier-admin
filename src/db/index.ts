@@ -71,6 +71,33 @@ export async function withTenant<T>(
 }
 
 /**
+ * Contexte superadmin — vue transverse, SANS tenant courant.
+ *
+ * `app_is_superadmin()` se contente de lire `app.user_role`. Tant que ce
+ * GUC n'est pas positionné, les politiques s'appliquent normalement et la
+ * console d'afficher « 0 site » : la lecture est filtrée, silencieusement,
+ * sans erreur. C'est le mode de défaillance que cette fonction corrige.
+ *
+ * ⚠ CECI N'EST PAS UN GARDE.
+ *   `asSuperAdmin` pose un contexte ; il ne vérifie rien. L'appelant DOIT
+ *   avoir déjà validé la session et l'indicateur superadmin
+ *   (`requireSuperAdmin` dans core/session.ts). Sans cette discipline, la
+ *   fonction devient un contournement : c'est pour cela qu'elle vit ici,
+ *   dans la couche base, où le rappel est impossible à manquer.
+ */
+export async function asSuperAdmin<T>(
+  fn: (tx: PostgresJsDatabase<typeof schema>) => Promise<T>,
+): Promise<T> {
+  return getDb().transaction(async (tx) => {
+    // `app.current_tenant` est vidé explicitement : un reste de contexte
+    // dans la session PG ne doit pas pouvoir restreindre une vue transverse.
+    await tx.execute(sql`SELECT set_config('app.current_tenant', '', true)`)
+    await tx.execute(sql`SELECT set_config('app.user_role', 'superadmin', true)`)
+    return fn(tx as unknown as PostgresJsDatabase<typeof schema>)
+  })
+}
+
+/**
  * Résolution du tenant depuis un domaine (sous-domaine du client).
  * Utilisée par le middleware avant toute requête.
  *

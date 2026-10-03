@@ -173,6 +173,30 @@ BEGIN
     RAISE NOTICE 'ok  — audit_events rejette la suppression';
   END;
 
+  -- 9. Modification de la fiche d'un site : l'agence oui, un client non.
+  --    Sans ce contrôle, l'absence de politique UPDATE passe inaperçue :
+  --    PostgreSQL refuse l'écriture sans lever d'erreur, et la console
+  --    d'agence affichait des bascules qui n'enregistraient rien.
+  PERFORM set_config('app.current_tenant', '', true);
+
+  PERFORM set_config('app.user_role', 'owner', true);
+  UPDATE tenants SET modules = modules
+   WHERE id = id_a;
+  GET DIAGNOSTICS vus_super = ROW_COUNT;
+  IF vus_super <> 0 THEN
+    RAISE EXCEPTION 'ÉCHEC : un rôle client a modifié la fiche d''un site (% lignes)', vus_super;
+  END IF;
+  RAISE NOTICE 'ok  — modification de « tenants » refusée pour un rôle client';
+
+  PERFORM set_config('app.user_role', 'superadmin', true);
+  UPDATE tenants SET modules = modules
+   WHERE id = id_a;
+  GET DIAGNOSTICS vus_super = ROW_COUNT;
+  IF vus_super <> 1 THEN
+    RAISE EXCEPTION 'ÉCHEC : le superadmin n''a pas pu modifier la fiche du site (% lignes)', vus_super;
+  END IF;
+  RAISE NOTICE 'ok  — modification de « tenants » acceptée pour le superadmin';
+
   RAISE NOTICE '';
   RAISE NOTICE 'TOUS LES CONTRÔLES PASSENT — isolation multi-tenant opérationnelle.';
 END $$;
