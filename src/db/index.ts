@@ -77,23 +77,32 @@ export async function withTenant<T>(
  * `mg-perfume` → tenant slug `mg-perfume` → UUID stocké dans `tenant_domains`.
  */
 export async function resolveTenantByHost(host: string): Promise<string | null> {
-  const clean = host.split(':')[0].toLowerCase()
   const rows = (await getDb().execute(sql`
-    SELECT td.tenant_id::text AS tenant_id
-      FROM tenant_domains td
-      JOIN tenants t ON t.id = td.tenant_id
-     WHERE lower(td.domain) = ${clean}
-       AND t.status = 'active'
-     LIMIT 1
-  `)) as unknown as { tenant_id: string }[]
-  return rows[0]?.tenant_id ?? null
+    SELECT * FROM app_resolve_tenant_by_host(${host})
+  `)) as unknown as { id: string }[]
+  return rows[0]?.id ?? null
 }
 
-/** Lecture d'un tenant par slug (avant session) — échoue fermé si absent. */
-export async function getTenantBySlug(slug: string) {
+export interface TenantRow {
+  id: string
+  slug: string
+  name: string
+  locale: string
+  modules: unknown
+  theme: unknown
+}
+
+/**
+ * Lecture d'un tenant par slug (avant session) — échoue fermé si absent.
+ *
+ * Passe par la fonction SECURITY DEFINER `app_resolve_tenant` : la table
+ * `tenants` étant sous RLS, une lecture directe exigerait déjà de connaître le
+ * tenant — c'est-à-dire ce qu'on cherche à déterminer. La fonction retourne
+ * uniquement la correspondance slug → identité, aucun contenu.
+ */
+export async function getTenantBySlug(slug: string): Promise<TenantRow | null> {
   const rows = (await getDb().execute(sql`
-    SELECT id::text AS id, slug, name, modules, theme, locale, status
-      FROM tenants WHERE slug = ${slug} AND status = 'active' LIMIT 1
-  `)) as unknown as Record<string, unknown>[]
+    SELECT * FROM app_resolve_tenant(${slug})
+  `)) as unknown as TenantRow[]
   return rows[0] ?? null
 }

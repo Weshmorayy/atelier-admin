@@ -52,6 +52,9 @@ export const session = pgTable('session', {
   userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
   /* plugin admin : sous-session d'impersonation */
   impersonatedBy: text('impersonated_by'),
+  /* plugin organization : tenant actif. C'est ce champ qui relie une session
+     à un site ; sans lui, Better Auth signale un écart de schéma au démarrage. */
+  activeOrganizationId: text('active_organization_id'),
 }, (t) => ({
   tokenIdx: uniqueIndex('session_token_idx').on(t.token),
   userIdx:   index('session_user_idx').on(t.userId),
@@ -126,6 +129,7 @@ export const invitation = pgTable('invitation', {
   status: text('status').notNull().default('pending'),
   expiresAt: timestamp('expires_at').notNull(),
   inviterId: text('inviter_id').notNull().references(() => user.id),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
 }, (t) => ({
   orgIdx: index('invitation_org_idx').on(t.organizationId),
 }))

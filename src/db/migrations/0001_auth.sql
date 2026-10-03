@@ -37,7 +37,9 @@ CREATE TABLE IF NOT EXISTS "session" (
   "user_agent"  text,
   "user_id"     text NOT NULL REFERENCES "user"("id") ON DELETE CASCADE,
   -- plugin admin : sous-session d'impersonation
-  "impersonated_by" text
+  "impersonated_by" text,
+  -- plugin organization : tenant actif (relie la session à un site)
+  "active_organization_id" text
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "session_token_idx" ON "session" ("token");
 CREATE INDEX IF NOT EXISTS "session_user_idx" ON "session" ("user_id");
@@ -104,7 +106,8 @@ CREATE TABLE IF NOT EXISTS "invitation" (
   "role"            text,
   "status"          text NOT NULL DEFAULT 'pending',
   "expires_at"      timestamp NOT NULL,
-  "inviter_id"      text NOT NULL REFERENCES "user"("id")
+  "inviter_id"      text NOT NULL REFERENCES "user"("id"),
+  "created_at"      timestamp NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS "invitation_org_idx" ON "invitation" ("organization_id");
 

@@ -228,3 +228,51 @@ GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO atelier_app;
 
 -- Le rôle applicatif ne doit jamais pouvoir neutraliser la sécurité.
 ALTER ROLE atelier_app NOBYPASSRLS;
+-- ═════════════════════════════════════════════════════════════════════════
+-- RÉSOLUTION DU TENANT — le problème de démarrage
+-- ═════════════════════════════════════════════════════════════════════════
+-- Pour poser `app.current_tenant`, il faut connaître le tenant. Mais la table
+-- `tenants` est elle-même protégée par RLS, qui exige justement ce contexte.
+-- Sans issue, l'application ne trouve jamais son tenant et renvoie 404 partout.
+--
+-- Solution : une fonction SECURITY DEFINER, c'est-à-dire exécutée avec les
+-- droits du propriétaire. Elle ne retourne QUE la correspondance slug → id,
+-- et rien de plus : elle n'expose aucun contenu, aucun réglage, aucun secret.
+-- Le RLS du contenu s'applique ensuite normalement.
+--
+-- ⚠ Fonction volontairement étroite : pas de SELECT générique, pas de
+--   passage de colonne en paramètre. Une fonction large de ce type
+--   ('resolver(text, text)') deviendrait un contournement du RLS.
+
+CREATE OR REPLACE FUNCTION app_resolve_tenant(p_slug text)
+RETURNS TABLE (id uuid, slug text, name text, locale text, modules jsonb, theme jsonb)
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+SET search_path = public
+AS $$
+  SELECT t.id, t.slug, t.name, t.locale, t.modules, t.theme
+    FROM tenants t
+   WHERE t.slug = p_slug AND t.status = 'active'
+   LIMIT 1;
+$$;
+
+CREATE OR REPLACE FUNCTION app_resolve_tenant_by_host(p_host text)
+RETURNS TABLE (id uuid, slug text)
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+SET search_path = public
+AS $$
+  SELECT t.id, t.slug
+    FROM tenant_domains td
+    JOIN tenants t ON t.id = td.tenant_id
+   WHERE lower(td.domain) = lower(split_part(p_host, ':', 1))
+     AND t.status = 'active'
+   LIMIT 1;
+$$;
+
+REVOKE ALL ON FUNCTION app_resolve_tenant(text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION app_resolve_tenant_by_host(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app_resolve_tenant(text) TO atelier_app;
+GRANT EXECUTE ON FUNCTION app_resolve_tenant_by_host(text) TO atelier_app;
