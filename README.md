@@ -47,6 +47,31 @@ composants sert le site ET l'admin.
 Thème `mg-perfume` : **reconstitué à l'identique** depuis le portail existant,
 dont le client MG est familier. Extrait de `SPEC_ADMIN_MG.md`.
 
+## Chaîne complète : admin → rebuild → site
+
+```
+Commerçant enregistre  →  action auditée  →  POST /api/deploy-hook
+   →  Coolify reconstruit  →  le site appelle /api/content/<tenant> au build
+```
+
+`/api/deploy-hook` est protégé par DEPLOY_HOOK_SECRET (comparaison à temps
+constant) ET par la session. Sans le premier, quiconque ouvre la page peut
+provoquer des reconstructions en boucle.
+
+## Vérifier l'isolation
+
+`src/db/test_rls.sql` simule deux applications, deux tenants, et vérifie huit
+propriétés : échec fermé sans contexte, cloisonnement en lecture, refus d'écriture
+hors tenant, `viewer` ne peut pas écrire, `editor` ne peut pas supprimer,
+`superadmin` traverse, journal en ajout seul.
+
+```bash
+psql "$DATABASE_URL" -f src/db/test_rls.sql
+```
+
+> Rappel : RLS est **inopérante** si l'application se connecte en propriétaire
+> des tables. D'où `FORCE ROW LEVEL SECURITY` et le rôle `atelier_app`.
+
 ## Consommer le contenu depuis un site client
 
 ```ts
