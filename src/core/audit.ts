@@ -19,8 +19,8 @@ export interface AuditMeta {
   userId?: string
   userEmail?: string
   role?: Role
-  ip?: string
-  userAgent?: string
+  ip?: string | null
+  userAgent?: string | null
 }
 
 export type AuditAction = 'create' | 'update' | 'delete' | 'restore' | 'login' | 'logout' | 'export' | 'import'
@@ -83,10 +83,14 @@ export function diff(before: unknown, after: unknown): { before: unknown; after:
 /**
  * Exécute une mutation et journalise dans la MÊME transaction.
  *
- * @param fn reçoit la transaction ; toute écriture y passe par `tx`.
- * @param entity  table concernée, ex. 'product'
- * @param action  action journalisée
- * @param getEntity lit l'état avant pour produire un diff (optionnel)
+ * @param fn reçoit la transaction ; toute écriture y passe par `tx`. Sa valeur
+ *            de retour constitue l'état « après ».
+ * @param readBefore appelé DANS la transaction, avant la mutation, pour lire
+ *            l'état antérieur. Indispensable : lire « avant » hors transaction
+ *            donnerait un diff faux en cas d'édition concurrente.
+ *
+ * Un `update` qui ne change rien n'écrit rien dans le journal — sinon celui-ci
+ * se remplirait de lignes vides et cesserait d'être exploitable.
  */
 export async function withAudit<T>(
   tx: PostgresJsDatabase<typeof schema>,
@@ -95,17 +99,22 @@ export async function withAudit<T>(
     entity: string
     entityId?: string | null
     action: AuditAction
+    readBefore?: (tx: PostgresJsDatabase<typeof schema>) => Promise<unknown>
     before?: unknown
-    after?: unknown
   },
   fn: (tx: PostgresJsDatabase<typeof schema>) => Promise<T>,
 ): Promise<T> {
-  const result = await fn(tx)
+  const before = params.readBefore ? await params.readBefore(tx) : params.before ?? null
 
-  const { before, after } =
-    params.action === 'update' || params.action === 'restore'
-      ? diff(params.before, params.after ?? result)
-      : { before: sanitize(params.before ?? null), after: sanitize(params.after ?? null) }
+  const result = await fn(tx)
+  const after = (result ?? null) as unknown
+
+  const isDiffable = params.action === 'update' || params.action === 'restore'
+  const { before: b, after: a } = isDiffable
+    ? diff(before, after)
+    : { before: sanitize(before), after: sanitize(after) }
+
+  if (isDiffable && b === null && a === null) return result
 
   await tx.execute(sql`
     INSERT INTO audit_events
@@ -118,8 +127,8 @@ export async function withAudit<T>(
       ${params.entity},
       ${params.entityId ?? null},
       ${params.action},
-      ${before === null ? null : JSON.stringify(before)}::jsonb,
-      ${after === null ? null : JSON.stringify(after)}::jsonb,
+      ${b === null ? null : JSON.stringify(b)}::jsonb,
+      ${a === null ? null : JSON.stringify(a)}::jsonb,
       ${meta.ip ?? null},
       ${meta.userAgent ?? null}
     )
