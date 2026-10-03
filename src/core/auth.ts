@@ -17,18 +17,45 @@ import { organization, admin as adminPlugin } from 'better-auth/plugins'
 import { nextCookies } from 'better-auth/next-js'
 import postgres from 'postgres'
 
-const secret = process.env.BETTER_AUTH_SECRET
-if (!secret) {
-  // Échec net au démarrage : une auth sans secret ne doit jamais démarrer en
-  // mode dégradé « je génèrerai une valeur plus tard ».
-  throw new Error('BETTER_AUTH_SECRET manquant — l\'authentification ne peut pas démarrer')
+/**
+ * SECRET — pas d'échec à l'import.
+ *
+ * Le build Next.js importe les modules pour collecter les données de page.
+ * Lever ici faisait échouer le déploiement sur Vercel/Coolify dès qu'une
+ * variable d'environnement manquait — un échec de build, pas une erreur
+ * d'authentification, et donc impossible à diagnostiquer sur place.
+ *
+ * On fournit donc un substitut explicite au build, et on vérifie au premier
+ * usage réel. En production, l'absence de secret fait échouer la requête avec
+ * un message actionnable au lieu de démarrer silencieusement avec une clé
+ * faible — ce qui rendrait les sessions falsifiables.
+ */
+const PLACEHOLDER_SECRET = 'atelier-admin-unconfigured-secret-build-time-only'
+
+function resolveSecret(): string {
+  const s = process.env.BETTER_AUTH_SECRET
+  return s && s.trim() !== '' ? s : PLACEHOLDER_SECRET
 }
 
-const client = postgres(process.env.DATABASE_URL!, { max: 5, prepare: false })
+/** À appeler avant tout usage réel de l'authentification. */
+export function assertAuthConfigured(): void {
+  if (resolveSecret() === PLACEHOLDER_SECRET) {
+    throw new Error(
+      "BETTER_AUTH_SECRET absent. Définissez-la dans l'environnement de production " +
+      '(Coolify → Variables, ou Vercel → Environment Variables). ' +
+      'Générez-la avec : openssl rand -base64 32',
+    )
+  }
+}
+
+const client = postgres(process.env.DATABASE_URL ?? 'postgres://localhost:5432/atelier', {
+  max: 5,
+  prepare: false,
+})
 
 export const auth = betterAuth({
   database: client,
-  secret,
+  secret: resolveSecret(),
 
   baseURL: process.env.BETTER_AUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL,
 
