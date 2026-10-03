@@ -9,8 +9,9 @@
 
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
+import { sql } from 'drizzle-orm'
 import { auth, assertAuthConfigured } from '@/core/auth'
-import { getTenantBySlug, type Role, type TenantContext } from '@/db'
+import { getDb, getTenantBySlug, type Role, type TenantContext } from '@/db'
 import { resolveEnabled, type ModuleKey } from '@/core/modules'
 import { resolveTheme, type TenantTheme } from '@/core/theme'
 
@@ -70,11 +71,21 @@ export async function resolveSession(slug?: string): Promise<ResolvedSession | n
   const tenant = await getTenantBySlug(tenantSlug)
   if (!tenant) return null
 
-  const modules = resolveEnabled(tenant.modules)
+  /* ── Appartenance : la seule barrière qui compte ──
+   *
+   * Résoudre un tenant par son slug ne dit RIEN de qui demande. Sans ce
+   * contrôle, changer `continental` en `autre-client` dans l'URL suffirait à
+   * ouvrir le back-office d'un autre client : le rôle était codé en dur
+   * `owner` et le RLS, une fois positionné sur le bon tenant, ouvrait
+   * toutes les portes.
+   *
+   * Le rôle vient donc de la ligne `member`, jamais d'une constante.
+   */
+  const memberRole = await getMemberRole(user.id, String(tenant.slug))
+  const role = isSuperAdmin ? 'superadmin' : memberRole
+  if (!role) return null
 
-  // Rôle : superadmin court-circuite, sinon `owner` au sein de l'org.
-  // Le raffinement par rôle/membre arrive avec les tables Better Auth.
-  const role: Role = isSuperAdmin ? 'superadmin' : 'owner'
+  const modules = resolveEnabled(tenant.modules)
 
   return {
     ctx: {
@@ -92,6 +103,39 @@ export async function resolveSession(slug?: string): Promise<ResolvedSession | n
       theme: resolveTheme(tenant.theme),
     },
     isSuperAdmin,
+  }
+}
+
+/**
+ * Rôle d'un utilisateur sur un tenant, via la table `member`.
+ *
+ * Les rôles Better Auth ('owner' | 'admin' | 'editor' | 'viewer') sont
+ * traduits vers l'échelle du RLS. Le mapping est explicite et NON rangé par
+ * ordre alphabétique : 'admin' et 'owner' ont les mêmes pouvoirs en base,
+ * mais seuls les deux derniers reaching le haut de l'échelle.
+ *
+ * Retourne `null` si l'utilisateur n'appartient pas à ce tenant — et `null`
+ * doit être traité comme un refus, jamais comme un rôle par défaut.
+ */
+async function getMemberRole(userId: string, tenantSlug: string): Promise<Role | null> {
+  const rows = (await getDb().execute(sql`
+    SELECT m.role
+      FROM member m
+      JOIN organization o ON o.id = m.organization_id
+     WHERE m.user_id = ${userId}
+       AND o.slug = ${tenantSlug}
+     LIMIT 1
+  `)) as unknown as { role: string }[]
+
+  const raw = rows[0]?.role
+  if (!raw) return null
+
+  switch (raw) {
+    case 'owner':   return 'owner'
+    case 'admin':   return 'manager'
+    case 'editor':  return 'editor'
+    case 'viewer':  return 'viewer'
+    default:        return null   // rôle inconnu : refus, pas escalade
   }
 }
 

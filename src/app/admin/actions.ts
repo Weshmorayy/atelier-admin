@@ -17,7 +17,7 @@
  */
 
 import { z } from 'zod'
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq, sql, type SQL } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 import { headers } from 'next/headers'
 
@@ -164,27 +164,73 @@ export async function updateProduct(
           },
         },
         async (t) => {
-          await t.execute(sql`
-            UPDATE products SET
-              name         = COALESCE(${data.name ?? null}, name),
-              slug         = COALESCE(${data.slug ?? null}, slug),
-              brand        = ${data.brand ?? null},
-              price        = COALESCE(${data.price ?? null}, price),
-              compare_at   = ${data.compareAt ?? null},
-              category_id  = ${data.categoryId ?? null},
-              image        = ${data.image ?? null},
-              image_alt    = ${data.imageAlt ?? null},
-              short_desc   = ${data.shortDesc ?? null},
-              description  = ${data.description ?? null},
-              badge        = ${data.badge ?? null},
-              in_stock     = COALESCE(${data.inStock ?? null}, in_stock),
-              is_active    = COALESCE(${data.isActive ?? null}, is_active),
-              featured_slot= ${data.featuredSlot ?? null},
-              specs        = COALESCE(${data.specs ? JSON.stringify(data.specs) : null}::jsonb, specs),
-              features     = COALESCE(${data.features ? JSON.stringify(data.features) : null}::jsonb, features),
-              updated_at   = now()
-            WHERE id = ${id} AND tenant_id = ${session.ctx.tenantId}
+          /* Construction dynamique du SET.
+           *
+           * Écrire `colonne = ${data.x ?? null}` est un piège : le schéma est
+           * `.partial()`, donc une action qui ne reçoit QUE `isActive` passe la
+           * validation et met `brand`, `image`, `category_id`... à NULL. Un
+           * simple bouton « masquer » effacerait la photo du produit.
+           *
+           * Ici absent n'est pas égal à vide : une clé absente du payload ne
+           * produit aucune colonne ; une clé présente à `null` écrit
+           * explicitement NULL — le seul moyen de vider un champ.
+           */
+          const DB_COL: Record<string, string> = {
+            name: 'name', slug: 'slug', brand: 'brand', price: 'price',
+            compareAt: 'compare_at', categoryId: 'category_id', image: 'image',
+            imageAlt: 'image_alt', shortDesc: 'short_desc', description: 'description',
+            badge: 'badge', inStock: 'in_stock', isActive: 'is_active',
+            featuredSlot: 'featured_slot', specs: 'specs', features: 'features',
+          }
+          const values: Record<string, unknown> = {
+            name: data.name, slug: data.slug, brand: data.brand,
+            price: data.price, compareAt: data.compareAt, categoryId: data.categoryId,
+            image: data.image, imageAlt: data.imageAlt, shortDesc: data.shortDesc,
+            description: data.description, badge: data.badge,
+            inStock: data.inStock, isActive: data.isActive, featuredSlot: data.featuredSlot,
+            specs: data.specs ? JSON.stringify(data.specs) : undefined,
+            features: data.features ? JSON.stringify(data.features) : undefined,
+          }
+
+          const sets: SQL[] = []
+          for (const [key, value] of Object.entries(values)) {
+            if (value === undefined) continue            // absent -> colonne intacte
+            const col = sql.identifier(DB_COL[key]!)
+            const isJson = key === 'specs' || key === 'features'
+            sets.push(
+              value === null
+                ? sql`${col} = NULL`
+                : isJson
+                  ? sql`${col} = ${value}::jsonb`
+                  : sql`${col} = ${value}`,
+            )
+          }
+
+          // Aucun champ fourni : on relit l'état plutôt que d'émettre un
+          // UPDATE vide, et le journal d'audit verra un diff nul -> rien écrit.
+          if (sets.length === 0) {
+            const unchanged = await t.execute(sql`
+              SELECT row_to_json(p) FROM products p
+               WHERE p.id = ${id} AND p.tenant_id = ${session.ctx.tenantId}
+            `)
+            return ((unchanged as unknown as Record<string, unknown>[])[0] ?? {}) as Record<string, unknown>
+          }
+
+          // RETURNING : un UPDATE écarté par le RLS n'affecte aucune ligne
+          // sans lever d'erreur. Sans cette vérification, l'écran
+          // afficherait « enregistré » alors que rien n'a bougé.
+          const written = await t.execute(sql`
+            UPDATE products SET ${sql.join(sets, sql`, `)}, updated_at = now()
+             WHERE id = ${id} AND tenant_id = ${session.ctx.tenantId}
+            RETURNING id::text
           `)
+
+          if ((written as unknown as unknown[]).length === 0) {
+            throw new ForbiddenError(
+              "Modification refusée : ce produit ne vous appartient pas ou votre rôle ne l'autorise pas.",
+            )
+          }
+
           const after = await t.execute(sql`
             SELECT row_to_json(p) FROM products p
              WHERE p.id = ${id} AND p.tenant_id = ${session.ctx.tenantId}
@@ -221,10 +267,30 @@ export async function deleteProduct(
             SELECT row_to_json(p) FROM products p
              WHERE p.id = ${id} AND p.tenant_id = ${session.ctx.tenantId}
           `)
-          await t.execute(sql`
+
+          /* RETURNING est obligatoire ici.
+           *
+           * Un DELETE refusé par le RLS ne lève pas d'erreur : la clause USING
+           * filtre la ligne et l'instruction affecte zéro ligne, sans bruit.
+           * Sans RETURNING, l'action répondrait « supprimé » alors que le
+           * produit est toujours là — et le journal d'audit enregistrerait une
+           * suppression qui n'a pas eu lieu.
+           *
+           * Avec RETURNING, zéro ligne signifie « rien supprimé », et
+           * l'action remonte un refus explicite.
+           */
+          const removed = await t.execute(sql`
             DELETE FROM products
              WHERE id = ${id} AND tenant_id = ${session.ctx.tenantId}
+            RETURNING id::text
           `)
+
+          if ((removed as unknown as unknown[]).length === 0) {
+            throw new ForbiddenError(
+              "Suppression refusée : ce produit ne vous appartient pas ou votre rôle ne l'autorise pas.",
+            )
+          }
+
           return ((before as unknown as Record<string, unknown>[])[0] ?? {}) as Record<string, unknown>
         },
       ),
@@ -256,4 +322,29 @@ export async function listProducts(slug: string) {
     `)
     return rows as unknown as Record<string, unknown>[]
   })
+}
+/**
+ * Lecture d'un produit pour le formulaire d'édition.
+ *
+ * Séparée de `listProducts` : le formulaire a besoin de la description, des
+ * caractéristiques et de `specs`, qu'une liste n'affiche pas. Le `id` vient de
+ * l'URL mais n'est JAMAIS utilisé pour choisir le tenant — celui-ci vient de
+ * la session, et la clause `tenant_id` fait le reste.
+ */
+export async function getProductForEdit(slug: string, id: string) {
+  const session = await guard(slug, 'products', 'read')
+
+  const rows = await withTenant(session.ctx, async (tx) => {
+    const r = await tx.execute(sql`
+      SELECT p.id::text, p.name, p.slug, p.brand, p.price::text, p.image, p.image_alt,
+             p.short_desc, p.description, p.badge, p.in_stock, p.is_active,
+             p.featured_slot, p.specs, p.features, p.category_id::text, p.compare_at::text
+        FROM products p
+       WHERE p.id = ${id} AND p.tenant_id = ${session.ctx.tenantId}
+       LIMIT 1
+    `)
+    return r as unknown as Record<string, unknown>[]
+  })
+
+  return rows[0] ?? null
 }

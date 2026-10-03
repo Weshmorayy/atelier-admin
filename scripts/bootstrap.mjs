@@ -87,7 +87,7 @@ try {
     const userId = randomUUID()
     await tx`
       INSERT INTO "user" (id, name, email, email_verified, is_super_admin, created_at, updated_at)
-      VALUES (${userId}, 'Compte agence', ${BOOTSTRAP_EMAIL.toLowerCase()}, true, true,
+      VALUES (${userId}, 'Atelier', ${BOOTSTRAP_EMAIL.toLowerCase()}, true, true,
               ${now}, ${now})
       ON CONFLICT (email) DO UPDATE
         SET is_super_admin = true, updated_at = now()

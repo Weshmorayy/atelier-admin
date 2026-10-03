@@ -2,10 +2,22 @@ import { redirect } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
 import { resolveSession } from '@/core/session'
-import { listProducts } from '@/app/admin/actions'
+import { listProducts, updateProduct } from '@/app/admin/actions'
 import { permissionAllowed } from '@/core/modules'
 
 export const dynamic = 'force-dynamic'
+
+/**
+ * Action de bascule ligne/non ligne.
+ *
+ * Elle ne reçoit QUE `{ isActive }`. C'est précisément le cas qui déclenchait
+ * le défaut corrigé dans `updateProduct` : avant, les colonnes absentes du
+ * payload étaient écrites à NULL et l'image du produit disparaissait.
+ */
+async function toggleActive(slug: string, id: string, isActive: boolean) {
+  'use server'
+  await updateProduct(slug, id, { isActive })
+}
 
 /**
  * Liste des produits d'un tenant.
@@ -26,7 +38,6 @@ export default async function ProductsPage({
 
   const products = await listProducts(slug)
   const canEdit = permissionAllowed(session.tenant.modules, 'products', 'update')
-  const canDelete = permissionAllowed(session.tenant.modules, 'products', 'delete')
 
   return (
     <div>
@@ -112,9 +123,32 @@ export default async function ProductsPage({
                         {active ? 'Actif' : 'Inactif'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      {canEdit ? <span className="label">Modifier</span> : null}
-                      {canDelete ? <span className="label ml-3">Supprimer</span> : null}
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-3">
+                        {canEdit ? (
+                          <Link
+                            href={`/admin/${slug}/products/${String(p.id)}`}
+                            className="label transition-opacity hover:opacity-60"
+                            style={{ color: 'var(--ink)' }}
+                          >
+                            Modifier
+                          </Link>
+                        ) : null}
+                        {canEdit ? (
+                          /* Bascule en ligne : `isActive` est le seul champ
+                             envoyé, le reste est préservé par le SET dynamique
+                             de `updateProduct`. */
+                          <form action={toggleActive.bind(null, slug, String(p.id), !active)}>
+                            <button
+                              type="submit"
+                              className="label transition-opacity hover:opacity-60"
+                              style={{ color: 'var(--muted)' }}
+                            >
+                              {active ? 'Masquer' : 'Afficher'}
+                            </button>
+                          </form>
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 )

@@ -137,6 +137,32 @@ body {
 
   /* Séparateur */
   .rule { border-bottom: 1px solid var(--border, #e5e5e5); }
+
+  /* Tuile de compteur — le chiffre porte le regard, le libellé l'explique.
+     Cliquable : chaque tuile mène à l'écran qu'elle mesure. */
+  .stat-tile {
+    position: relative;
+    display: block;
+    height: 100%;
+    border: 1px solid var(--border, #e5e5e5);
+    border-radius: var(--radius-card, 20px);
+    background: var(--surface, #fff);
+    padding: 1.15rem 1.25rem 1.25rem;
+    transition: border-color 160ms ease, transform 160ms ease;
+  }
+  .stat-tile:hover { border-color: var(--ink, #111); transform: translateY(-2px); }
+
+  /* Chiffre en serif de contraste : c'est ce qui évite l'ascenseur
+     « tout en une seule police » du reste de l'interface. */
+  .stat-value {
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: clamp(1.75rem, 3vw, 2.25rem);
+    line-height: 1;
+    letter-spacing: -0.02em;
+    color: var(--ink, #111);
+    font-variant-numeric: tabular-nums;
+  }
 }
 
 /* Accessibilité : focus toujours visible */

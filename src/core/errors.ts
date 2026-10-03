@@ -6,8 +6,8 @@
  */
 
 export class ForbiddenError extends Error {
-  constructor() {
-    super("Vous n'avez pas les droits nécessaires pour cette action.")
+  constructor(message = "Vous n'avez pas les droits nécessaires pour cette action.") {
+    super(message)
     this.name = 'ForbiddenError'
   }
 }

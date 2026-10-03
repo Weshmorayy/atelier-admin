@@ -2,9 +2,24 @@ import Link from 'next/link'
 import { headers } from 'next/headers'
 import { resolveSession } from '@/core/session'
 import { themeToCssVars } from '@/core/theme'
+import { allModules } from '@/core/modules'
 import Nav from '@/components/Nav'
 
 export const dynamic = 'force-dynamic'
+
+/**
+ * Module correspondant au chemin courant, pour marquer le menu.
+ *
+ * On_retire le préfixe tenant avant de comparer : les `adminRoutes` du
+ * registre sont relatives au tenant (`/admin/products`), alors que le chemin
+ * est complet (`/admin/continental/products`).
+ */
+function activeModule(pathname: string): string | undefined {
+  const afterTenant = pathname.replace(/^\/admin\/[^/]+/, '') || '/'
+  return allModules().find((m) =>
+    m.adminRoutes.some((r) => afterTenant === r.replace('/admin', '') || afterTenant.startsWith(r.replace('/admin', '') + '/')),
+  )?.key
+}
 
 /**
  * Coquille de l'administration.
@@ -15,11 +30,14 @@ export const dynamic = 'force-dynamic'
  */
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const hdrs = await headers()
-  // Slug du tenant : sous-domaine du client, ou segment d'URL.
-  const host = (hdrs.get('x-forwarded-host') ?? hdrs.get('host') ?? '').split(':')[0]
-  const subdomain = host.split('.')[0]
+  // Slug du tenant : segment d'URL (mis en place par le middleware), sinon
+  // sous-domaine du client. Un layout parent ne voit pas les params de son
+  // enfant — d'où le passage par un en-tête.
+  const tenantSlug =
+    hdrs.get('x-atelier-tenant') ??
+    (hdrs.get('x-forwarded-host') ?? hdrs.get('host') ?? '').split(':')[0].split('.')[0]
 
-  const session = await resolveSession(subdomain)
+  const session = await resolveSession(tenantSlug)
 
   // Sans session : pas de coquille. Les pages enfant revérifient la session
   // avant de lire quoi que ce soit — aucune donnée ne fuit par l'absence de
@@ -74,7 +92,11 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
       <div className="mx-auto flex max-w-[1400px] gap-8 px-6 py-8">
         <aside className="w-60 flex-shrink-0">
-          <Nav tenantSlug={tenant.slug} enabled={tenant.modules} />
+          <Nav
+            tenantSlug={tenant.slug}
+            enabled={tenant.modules}
+            active={activeModule(hdrs.get('x-atelier-path') ?? '')}
+          />
         </aside>
         <main className="min-w-0 flex-1">{children}</main>
       </div>

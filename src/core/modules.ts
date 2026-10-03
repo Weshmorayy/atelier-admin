@@ -239,6 +239,33 @@ export function permissionAllowed(
   return getModule(key).permissions.includes(perm)
 }
 
+/**
+ * Ce que le RÔLE autorise, indépendamment du module.
+ *
+ * `permissionAllowed` répond à « ce module est-il actif et déclare-t-il cette
+ * permission ? ». Il ne dit rien du rôle : sans ce complément, un `editor`
+ * voyait le bouton Supprimer alors que le SGBD refuse toujours l'action.
+ * L'utilisateur ne doit pas se voir proposer ce qu'il ne pourra pas faire.
+ *
+ * L'ordre suit l'échelle de `app_role_at_least` (rls.sql), pas l'ordre
+ * alphabétique des chaînes.
+ */
+export function roleAllows(role: string, perm: Permission): boolean {
+  switch (role) {
+    case 'superadmin':
+    case 'owner':
+      return true
+    case 'manager':
+      return perm !== 'manage-users'
+    case 'editor':
+      return perm === 'read' || perm === 'create' || perm === 'update' || perm === 'publish'
+    case 'viewer':
+      return perm === 'read'
+    default:
+      return false          // rôle inconnu : aucune permission, jamais d'escalade
+  }
+}
+
 /** Navigation admin filtrée par modules actifs, groupée. */
 export function buildNav(enabled: ModuleKey[]) {
   const groups: Record<ModuleDef['group'], ModuleDef[]> = {

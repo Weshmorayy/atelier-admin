@@ -226,6 +226,20 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON
 -- Séquences : inutiles (UUID), mais évite toute erreur future.
 GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO atelier_app;
 
+-- Tables Better Auth (utilisateur, session, compte, vérification).
+--
+-- Elles sont VOLONTAIREMENT hors du périmètre RLS multi-tenant : ce sont des
+-- tables d'identité globales, pas du contenu client. Un compte-agence doit
+-- pouvoir se connecter sans appartenir à un tenant, et Better Auth assure
+-- lui-même le cloisonnement des organisations.
+--
+-- Sans ce GRANT, aucune connexion n'est possible : la lecture de « user »
+-- échoue en 42501 avant même d'atteindre les politiques. C'est discret — les
+-- pages publiques répondent 200, seule la connexion échoue.
+GRANT SELECT, INSERT, UPDATE, DELETE ON
+  "user", session, account, verification, organization, member, invitation
+  TO atelier_app;
+
 -- Le rôle applicatif ne doit jamais pouvoir neutraliser la sécurité.
 ALTER ROLE atelier_app NOBYPASSRLS;
 -- ═════════════════════════════════════════════════════════════════════════
