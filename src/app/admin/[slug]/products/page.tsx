@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import Image from 'next/image'
+import Link from 'next/link'
 import { resolveSession } from '@/core/session'
 import { listProducts } from '@/app/admin/actions'
 import { permissionAllowed } from '@/core/modules'
@@ -35,7 +36,9 @@ export default async function ProductsPage({
           <h1 className="mt-1 text-2xl font-semibold">Produits</h1>
         </div>
         {canEdit ? (
-          <button type="button" className="btn-primary">Nouveau produit</button>
+          <Link href={`/admin/${slug}/products/nouveau`} className="btn-primary">
+            Nouveau produit
+          </Link>
         ) : (
           <span className="label" style={{ color: 'var(--muted)' }}>Lecture seule</span>
         )}
