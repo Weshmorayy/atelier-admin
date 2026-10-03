@@ -98,8 +98,7 @@ export default function SettingsForm({ tenantSlug, canEdit, initial }: SettingsF
                 <input
                   name={`${group}.${name}`}
                   defaultValue={initial[group]?.[name] ?? ''}
-                  className="mt-1 w-full rounded-xl border bg-transparent px-4 py-2.5 text-sm"
-                  style={{ borderColor: 'var(--border)' }}
+                  className="field mt-1"
                 />
               </label>
             ))}

@@ -33,7 +33,7 @@ export default async function ProductsPage({
       <div className="flex items-end justify-between gap-4">
         <div>
           <p className="label" style={{ color: 'var(--accent-text)' }}>Catalogue</p>
-          <h1 className="mt-1 text-2xl font-semibold">Produits</h1>
+          <h1 className="page-title mt-1">Produits</h1>
         </div>
         {canEdit ? (
           <Link href={`/admin/${slug}/products/nouveau`} className="btn-primary">
@@ -85,8 +85,7 @@ export default async function ProductsPage({
                         </span>
                         <span className="font-medium">{String(p.name)}</span>
                         {p.badge ? (
-                          <span className="label rounded-full px-2 py-0.5"
-                            style={{ background: 'var(--accent-soft)', color: 'var(--accent-text)' }}>
+                          <span className="chip" style={{ background: 'var(--accent-soft)', color: 'var(--accent-text)' }}>
                             {String(p.badge)}
                           </span>
                         ) : null}
@@ -104,11 +103,11 @@ export default async function ProductsPage({
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="label rounded-full px-2 py-0.5"
+                      <span
+                        className="chip"
                         style={{
                           background: active ? 'var(--accent-soft)' : 'transparent',
                           color: active ? 'var(--accent-text)' : 'var(--muted)',
-                          border: '1px solid var(--border)',
                         }}>
                         {active ? 'Actif' : 'Inactif'}
                       </span>

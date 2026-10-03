@@ -20,7 +20,7 @@ export default async function TenantHome({
   return (
     <div>
       <p className="label" style={{ color: 'var(--accent-text)' }}>{tenant.name}</p>
-      <h1 className="mt-1 text-2xl font-semibold">Tableau de bord</h1>
+      <h1 className="page-title mt-1">Tableau de bord</h1>
 
       <p className="mt-2 text-sm" style={{ color: 'var(--muted)' }}>
         {active.length} module{active.length > 1 ? 's' : ''} actif{active.length > 1 ? 's' : ''}

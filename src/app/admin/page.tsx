@@ -37,7 +37,7 @@ export default function AdminHome() {
                   border: `1px solid var(--border)`,
                 }}
               >
-                {defaults.has(m.key) ? 'actif par défaut' : m.key}
+                {defaults.has(m.key) ? 'actif' : m.key}
               </span>
             </div>
             <p className="mt-2 text-sm" style={{ color: 'var(--muted)' }}>{m.description}</p>

@@ -80,9 +80,11 @@ export const defaultTheme: TenantTheme = {
     accentSoft: '#F5F5F5',
   },
   fonts: {
-    display: "'Archivo', Arial, sans-serif",
-    body: "'Inter', Arial, sans-serif",
-    label: "'Inter', Arial, sans-serif",
+    // Serif de contraste pour les titres, sans-serif pour le reste : c'est
+    // ce qui évite l'ascenseur typographique « tout en une seule police ».
+    display: "'Instrument Serif', Georgia, serif",
+    body: "'Instrument Sans', ui-sans-serif, system-ui, sans-serif",
+    label: "'Instrument Sans', ui-sans-serif, system-ui, sans-serif",
   },
   radius: { card: '20px', modal: '24px', control: '9999px' },
   logo: '/brand/logo.png',

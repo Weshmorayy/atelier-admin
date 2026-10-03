@@ -55,7 +55,7 @@ export default async function SuperAdminPage() {
             <section key={t.id} className="card p-6">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-lg font-semibold">{t.name}</h2>
+                  <h2 className="display-sm text-lg text-[var(--ink)]">{t.name}</h2>
                   <p className="text-sm" style={{ color: 'var(--muted)' }}>
                     {t.slug} · {t.product_count} produit{t.product_count > 1 ? 's' : ''}
                   </p>

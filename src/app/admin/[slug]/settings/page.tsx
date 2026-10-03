@@ -38,7 +38,7 @@ export default async function SettingsPage({
   return (
     <div>
       <p className="label" style={{ color: 'var(--accent-text)' }}>Site</p>
-      <h1 className="mt-1 mb-8 text-2xl font-semibold">Contacts &amp; réglages</h1>
+      <h1 className="page-title mt-1 mb-8">Contacts &amp; réglages</h1>
 
       {!canEdit ? (
         <p className="card mb-6 p-4 text-sm" style={{ color: 'var(--muted)' }}>

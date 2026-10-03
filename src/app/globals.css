@@ -1,36 +1,153 @@
-@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=Cormorant+Garamond:wght@600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400..700;1,400..700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Les couleurs ne sont PAS définies ici : elles viennent du thème du tenant,
-   injecté dans la balise <head> sous forme de variables. Un seul jeu de
-   composants, autant d'identités visuelles. */
+/* Les couleurs ne sont pas définies ici : elles viennent du thème du tenant
+   via des variables CSS (core/theme.ts). Un jeu de composants, autant
+   d'identités. */
+
+:root {
+  --font-admin: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-heading, 'Instrument Serif', Georgia, serif);
+}
+
+* { -webkit-font-smoothing: antialiased; }
 
 body {
   background-color: var(--bg, #fff);
   color: var(--body, #333);
-  font-family: var(--font-body, Inter, sans-serif);
+  font-family: var(--font-admin);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: 'cv11', 'ss01';
 }
 
+/* ─────────────────────────────────────────────── composants ── */
+
 @layer components {
-  .card   { background: var(--surface,#fff); border: 1px solid var(--border,#e5e5e5);
-            border-radius: var(--radius-card,20px); }
-  .pill   { border-radius: var(--radius-control,9999px); }
-  .label  { font-family: var(--font-label,Inter,sans-serif); font-size: 10px; font-weight: 700;
-            text-transform: uppercase; letter-spacing: .08em; }
-  .btn-primary { background: var(--ink,#111); color: #fff; border-radius: var(--radius-control,9999px);
-                 padding: .625rem 1.25rem; font-size: .875rem; font-weight: 600;
-                 transition: background-color .2s ease; }
-  .btn-primary:hover { opacity: .88; }
-  .btn-ghost { border: 1.5px solid var(--ink,#111); color: var(--ink,#111); border-radius: var(--radius-control,9999px);
-               padding: .625rem 1.25rem; font-size: .875rem; font-weight: 600;
-               transition: background-color .2s ease, color .2s ease; }
-  .btn-ghost:hover { background: var(--ink,#111); color: #fff; }
-  .nav-item { display:flex; align-items:center; gap:.75rem; padding:.625rem 1rem;
-              border-radius:.75rem; font-size:.875rem; font-weight:500;
-              color: var(--body,#333); transition: background-color .2s ease; }
+  /* Carte : surface légèrement distincte, bordure douce, ombre légère */
+  .card {
+    background: var(--surface, #fff);
+    border: 1px solid var(--border, #e5e5e5);
+    border-radius: 14px;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.03), 0 1px 3px rgb(0 0 0 / 0.02);
+  }
+
+  /* Petites capitales — used pour les micro-labels */
+  .label {
+    font-family: var(--font-label, var(--font-admin));
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  /* Titre de page : serif de contraste, comme sur la référence */
+  .page-title {
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: clamp(1.75rem, 3.5vw, 2.25rem);
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    color: var(--ink, #111);
+  }
+
+  /* Boutons */
+  .btn-primary, .btn-ghost {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: 9999px;
+    padding: 0.625rem 1.15rem;
+    font-size: 0.875rem;
+    font-weight: 550;
+    line-height: 1.2;
+    cursor: pointer;
+    transition: background-color 160ms ease, color 160ms ease,
+                border-color 160ms ease, transform 160ms ease;
+  }
+  .btn-primary {
+    background: var(--ink, #111);
+    color: #fff;
+    border: 1px solid transparent;
+  }
+  .btn-primary:hover:not(:disabled) { transform: translateY(-1px); opacity: 0.92; }
+  .btn-ghost {
+    background: transparent;
+    color: var(--ink, #111);
+    border: 1.5px solid var(--border-strong, var(--border, #e5e5e5));
+  }
+  .btn-ghost:hover:not(:disabled) { border-color: var(--ink, #111); }
+  .btn-primary:disabled, .btn-ghost:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Champs */
+  .field {
+    width: 100%;
+    border-radius: 10px;
+    border: 1px solid var(--border, #e5e5e5);
+    background: var(--surface, #fff);
+    padding: 0.55rem 0.75rem;
+    font-size: 0.875rem;
+    color: var(--ink, #111);
+    transition: border-color 140ms ease, box-shadow 140ms ease;
+  }
+  .field::placeholder { color: var(--muted, #8b837a); }
+  .field:focus {
+    outline: none;
+    border-color: var(--ink, #111);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ink) 10%, transparent);
+  }
+
+  /* Navigation latérale */
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.5rem 0.7rem;
+    border-radius: 9px;
+    font-size: 0.875rem;
+    font-weight: 450;
+    color: var(--body, #555);
+    transition: background-color 140ms ease, color 140ms ease;
+  }
   .nav-item:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
-  .nav-item-active { background: var(--ink,#111); color:#fff; }
+  .nav-item-active {
+    background: var(--ink, #111);
+    color: #fff;
+    font-weight: 550;
+  }
+  .nav-item-active:hover { background: var(--ink, #111); }
+
+  /* Pilule d'état */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 9999px;
+    padding: 0.15rem 0.55rem;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    border: 1px solid var(--border, #e5e5e5);
+  }
+
+  /* Séparateur */
+  .rule { border-bottom: 1px solid var(--border, #e5e5e5); }
+}
+
+/* Accessibilité : focus toujours visible */
+:focus-visible {
+  outline: 2px solid var(--ink, #111);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

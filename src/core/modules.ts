@@ -48,8 +48,6 @@ export interface ModuleDef {
   clientSlots: string[]
   /** Modules dont celui-ci dépend. */
   requires?: ModuleKey[]
-  /** Activé par défaut pour un nouveau tenant. */
-  defaultEnabled: boolean
   /** Regroupement dans la navigation. */
   group: 'contenu' | 'commerce' | 'technique'
 }
@@ -64,7 +62,6 @@ export const MODULE_REGISTRY: ModuleDef[] = [
     permissions: ['manage-settings'],
     adminRoutes: ['/admin/settings'],
     clientSlots: ['footer', 'contact-block'],
-    defaultEnabled: true,
     group: 'technique',
   },
   {
@@ -77,7 +74,6 @@ export const MODULE_REGISTRY: ModuleDef[] = [
     adminRoutes: ['/admin/products'],
     clientSlots: ['catalogue', 'product-grid', 'product-detail', 'featured'],
     requires: ['categories'],
-    defaultEnabled: false,
     group: 'commerce',
   },
   {
@@ -89,7 +85,6 @@ export const MODULE_REGISTRY: ModuleDef[] = [
     permissions: ['read', 'create', 'update', 'delete'],
     adminRoutes: ['/admin/categories'],
     clientSlots: ['catalogue-filter'],
-    defaultEnabled: false,
     group: 'commerce',
   },
   {
@@ -101,7 +96,6 @@ export const MODULE_REGISTRY: ModuleDef[] = [
     permissions: ['read', 'create', 'update', 'delete', 'publish'],
     adminRoutes: ['/admin/banners'],
     clientSlots: ['hero', 'strip'],
-    defaultEnabled: true,
     group: 'contenu',
   },
   {
@@ -113,7 +107,6 @@ export const MODULE_REGISTRY: ModuleDef[] = [
     permissions: ['read', 'create', 'update', 'delete', 'publish'],
     adminRoutes: ['/admin/pages'],
     clientSlots: ['page'],
-    defaultEnabled: false,
     group: 'contenu',
   },
   {
@@ -125,7 +118,6 @@ export const MODULE_REGISTRY: ModuleDef[] = [
     permissions: ['read', 'create', 'update', 'delete'],
     adminRoutes: ['/admin/faq'],
     clientSlots: ['faq'],
-    defaultEnabled: false,
     group: 'contenu',
   },
   {
@@ -137,7 +129,6 @@ export const MODULE_REGISTRY: ModuleDef[] = [
     permissions: ['read', 'create', 'update', 'delete', 'publish'],
     adminRoutes: ['/admin/blog'],
     clientSlots: ['blog-list', 'blog-post'],
-    defaultEnabled: false,
     group: 'contenu',
   },
   {
@@ -149,7 +140,6 @@ export const MODULE_REGISTRY: ModuleDef[] = [
     permissions: ['read', 'update'],
     adminRoutes: ['/admin/leads'],
     clientSlots: ['contact-form'],
-    defaultEnabled: true,
     group: 'commerce',
   },
   {
@@ -161,7 +151,6 @@ export const MODULE_REGISTRY: ModuleDef[] = [
     permissions: ['read', 'create', 'update', 'delete'],
     adminRoutes: ['/admin/media'],
     clientSlots: [],
-    defaultEnabled: true,
     group: 'technique',
   },
   {
@@ -173,7 +162,6 @@ export const MODULE_REGISTRY: ModuleDef[] = [
     permissions: ['view-analytics'],
     adminRoutes: ['/admin/analytics'],
     clientSlots: [],
-    defaultEnabled: false,
     group: 'technique',
   },
   {
@@ -185,7 +173,6 @@ export const MODULE_REGISTRY: ModuleDef[] = [
     permissions: ['read', 'create', 'update'],
     adminRoutes: ['/admin/payments'],
     clientSlots: ['checkout'],
-    defaultEnabled: false,
     group: 'commerce',
   },
 ]
@@ -200,8 +187,17 @@ export function getModule(key: ModuleKey): ModuleDef {
 
 export function allModules(): ModuleDef[] { return MODULE_REGISTRY }
 
+/**
+ * Modules activés à la création d'un tenant : AUCUN.
+ *
+ * Décision assumée : le choix appartient à l'agence, pas au système.
+ * Un module activé par défaut sur un site qui n'en a pas besoin produit un
+ * écran vide à maintenir ; à l'inverse, oublier d'en cocher un se voit
+ * immédiatement. La liste part donc vide et se coche dans la console
+ * superadmin.
+ */
 export function defaultModuleKeys(): ModuleKey[] {
-  return MODULE_REGISTRY.filter((m) => m.defaultEnabled).map((m) => m.key)
+  return []
 }
 
 /** Modules actifs d'un tenant, dépendances comprises. */

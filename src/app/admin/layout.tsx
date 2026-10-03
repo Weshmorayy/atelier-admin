@@ -47,7 +47,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
                 {tenant.name.slice(0, 1).toUpperCase()}
               </span>
               <div>
-                <p className="text-sm font-semibold leading-tight">{tenant.name}</p>
+                <p className="text-sm font-semibold leading-tight text-[var(--ink)]">{tenant.name}</p>
                 <p className="label" style={{ color: 'var(--muted)' }}>
                   {tenant.theme.tagline ?? 'Administration'}
                 </p>
